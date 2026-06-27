@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-import json, os
+import os
+import httpx
 
 app = FastAPI()
 
@@ -11,23 +12,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_FILE = "trades.json"
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-def load_trades():
-    if not os.path.exists(DB_FILE):
-        return []
-    try:
-        with open(DB_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return []
-
-def save_trades(trades):
-    try:
-        with open(DB_FILE, "w") as f:
-            json.dump(trades, f)
-    except:
-        pass
+def headers():
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
 
 @app.get("/")
 def root():
@@ -37,19 +31,37 @@ def root():
 async def add_trade(request: Request):
     try:
         trade = await request.json()
-        trades = load_trades()
-        trade["id"] = len(trades) + 1
-        trades.append(trade)
-        save_trades(trades)
-        return {"message": "Trade saved", "id": trade["id"]}
+        trade.pop("id", None)
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/trades",
+                headers=headers(),
+                json=trade
+            )
+        return {"message": "Trade saved", "data": res.json()}
     except Exception as e:
         return {"error": str(e)}
 
 @app.get("/trades")
-def get_trades():
-    return load_trades()
+async def get_trades():
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/trades?order=open_time.asc&limit=10000",
+                headers=headers()
+            )
+        return res.json()
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.delete("/trades")
-def clear_trades():
-    save_trades([])
-    return {"message": "Cleared"}
+async def clear_trades():
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/trades?id=gte.0",
+                headers=headers()
+            )
+        return {"message": "Cleared"}
+    except Exception as e:
+        return {"error": str(e)}
