@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import json, os
 
@@ -16,25 +16,40 @@ DB_FILE = "trades.json"
 def load_trades():
     if not os.path.exists(DB_FILE):
         return []
-    with open(DB_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(DB_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return []
 
 def save_trades(trades):
-    with open(DB_FILE, "w") as f:
-        json.dump(trades, f)
+    try:
+        with open(DB_FILE, "w") as f:
+            json.dump(trades, f)
+    except:
+        pass
 
 @app.get("/")
 def root():
     return {"status": "Trading Journal API is running"}
 
 @app.post("/trade")
-def add_trade(trade: dict):
-    trades = load_trades()
-    trade["id"] = len(trades) + 1
-    trades.append(trade)
-    save_trades(trades)
-    return {"message": "Trade saved", "id": trade["id"]}
+async def add_trade(request: Request):
+    try:
+        trade = await request.json()
+        trades = load_trades()
+        trade["id"] = len(trades) + 1
+        trades.append(trade)
+        save_trades(trades)
+        return {"message": "Trade saved", "id": trade["id"]}
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/trades")
 def get_trades():
     return load_trades()
+
+@app.delete("/trades")
+def clear_trades():
+    save_trades([])
+    return {"message": "Cleared"}
