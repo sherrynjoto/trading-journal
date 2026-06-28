@@ -12,8 +12,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = "PASTE_YOUR_ANON_KEY_HERE"
+SUPABASE_URL = "https://hirvwvmctmgsjweedonk.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpcnZ3dm1jdG1nc2p3ZWVkb25rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NjA5OTUsImV4cCI6MjA5ODEzNjk5NX0.A406IYAEvpCGgtsBgYigzU3Gpm6GS0B8u1a9NHW7Gpg"
 
 def get_headers():
     return {
@@ -30,9 +30,8 @@ def root():
 @app.get("/debug")
 def debug():
     return {
-        "supabase_url": os.environ.get("SUPABASE_URL", "NOT FOUND"),
-        "key_length": len(os.environ.get("SUPABASE_KEY", "")),
-        "test_key": os.environ.get("TEST_KEY", "NOT FOUND")
+        "supabase_url": SUPABASE_URL,
+        "key_length": len(SUPABASE_KEY)
     }
 
 @app.post("/trade")
