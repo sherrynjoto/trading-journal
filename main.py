@@ -25,6 +25,12 @@ def headers():
 
 @app.get("/")
 def root():
+    @app.get("/debug")
+def debug():
+    return {
+        "supabase_url": os.environ.get("SUPABASE_URL", "NOT FOUND"),
+        "supabase_key_length": len(os.environ.get("SUPABASE_KEY", "")) 
+    }
     return {"status": "Trading Journal API is running"}
 
 @app.post("/trade")
