@@ -629,9 +629,28 @@ function showPage(id, el) {
 }
 
 // ── PDF ───────────────────────────────────────────────────────
+function makeChartImage(pts, label, color) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 800; canvas.height = 220;
+  const ctx = canvas.getContext('2d');
+  const c = new Chart(ctx, {
+    type:'line',
+    data:{labels:pts.map(x=>{const d=new Date(x.d);return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}),
+      datasets:[{label,data:pts.map(x=>x.bal),borderColor:color,borderWidth:2,
+        pointRadius:pts.length>30?0:3,fill:true,
+        backgroundColor:color==='#1D9E75'?'rgba(29,158,117,.1)':'rgba(239,68,68,.1)',tension:.3}]},
+    options:{responsive:false,animation:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{font:{size:9}},grid:{color:'#eee'}},y:{ticks:{font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:'#eee'}}}}
+  });
+  const img = canvas.toDataURL('image/png');
+  c.destroy();
+  return img;
+}
+
 function downloadPDF() {
   const btn = document.getElementById('pdfBtn');
   btn.textContent = 'Generating...'; btn.disabled = true;
+
   const tr = trades();
   const dep = totalDeposit(), wit = totalWithdrawal(), pnl = totalTradePnl(), bal = currentBalance();
   const wins = tr.filter(t=>parseFloat(t.pnl)>0);
@@ -639,30 +658,52 @@ function downloadPDF() {
   const dayMap = getDayMap();
   const pts = getEquityPoints();
   const now = new Date();
-  const ytd = pts.filter(p=>p.d.startsWith(now.getFullYear()+''));
-  const mon = pts.filter(p=>{const c=new Date(now);c.setMonth(now.getMonth()-1);return new Date(p.d)>=c;});
-  const eqD = pts.length>=2?(pts[pts.length-1].bal-pts[pts.length-2].bal).toFixed(2):'0.00';
-  const eqM = mon.length>=2?(mon[mon.length-1].bal-mon[0].bal).toFixed(2):'0.00';
-  const eqY = ytd.length>=2?(ytd[ytd.length-1].bal-ytd[0].bal).toFixed(2):pnl.toFixed(2);
+
+  // Daily: last 7 points
+  const dailyPts = pts.slice(-7);
+  // Monthly: last 30 days
+  const monCut = new Date(now); monCut.setMonth(now.getMonth()-1);
+  const monthlyPts = pts.filter(p=>new Date(p.d)>=monCut);
+  // YTD
+  const ytdPts = pts.filter(p=>p.d.startsWith(now.getFullYear()+''));
+
+  const eqD = dailyPts.length>=2?(dailyPts[dailyPts.length-1].bal-dailyPts[0].bal).toFixed(2):'0.00';
+  const eqM = monthlyPts.length>=2?(monthlyPts[monthlyPts.length-1].bal-monthlyPts[0].bal).toFixed(2):'0.00';
+  const eqY = ytdPts.length>=2?(ytdPts[ytdPts.length-1].bal-ytdPts[0].bal).toFixed(2):pnl.toFixed(2);
   const today = now.toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+
+  const getColor = v => parseFloat(v)>=0?'#1D9E75':'#ef4444';
+
+  const imgDaily    = dailyPts.length>1   ? makeChartImage(dailyPts,   'Daily',   getColor(eqD)) : '';
+  const imgMonthly  = monthlyPts.length>1 ? makeChartImage(monthlyPts, 'Monthly', getColor(eqM)) : '';
+  const imgYTD      = ytdPts.length>1     ? makeChartImage(ytdPts,     'YTD',     getColor(eqY)) : '';
+
+  const chartSection = (title, change, img) => img ? `
+    <div style="margin-bottom:28px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.06em">${title}</div>
+        <div style="font-size:18px;font-weight:700;color:${getColor(change)}">${parseFloat(change)>=0?'+':'-'}$${Math.abs(parseFloat(change)).toFixed(2)}</div>
+      </div>
+      <img src="${img}" style="width:100%;border:1px solid #eee;border-radius:8px"/>
+    </div>` : '';
 
   const html = `<!DOCTYPE html><html><head><title>Trading Journal Report</title>
   <style>*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,sans-serif}
-  body{padding:40px;color:#111}h1{font-size:22px;font-weight:700}h1 span{color:#1D9E75}
+  body{padding:40px;color:#111;max-width:860px;margin:0 auto}
+  h1{font-size:22px;font-weight:700}h1 span{color:#1D9E75}
   .sub{color:#999;font-size:12px;margin-top:4px;margin-bottom:28px}
-  .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
-  .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
-  .card{border:1px solid #eee;border-radius:10px;padding:16px}
-  .cl{font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
-  .cv{font-size:20px;font-weight:700}.pos{color:#1D9E75}.neg{color:#ef4444}
-  .st{font-size:11px;font-weight:600;color:#999;text-transform:uppercase;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #eee}
-  table{width:100%;border-collapse:collapse}th{text-align:left;font-size:10px;color:#999;padding:7px 10px;border-bottom:1px solid #eee;text-transform:uppercase}
-  td{padding:8px 10px;font-size:12px;border-bottom:1px solid #f5f5f5}
-  .ft{margin-top:32px;text-align:center;font-size:11px;color:#ccc;border-top:1px solid #eee;padding-top:16px}</style>
-  </head><body>
+  .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+  .card{border:1px solid #eee;border-radius:10px;padding:14px}
+  .cl{font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+  .cv{font-size:18px;font-weight:700}.pos{color:#1D9E75}.neg{color:#ef4444}
+  .section-title{font-size:13px;font-weight:600;color:#111;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #f0f0f0}
+  .ft{margin-top:32px;text-align:center;font-size:11px;color:#ccc;border-top:1px solid #eee;padding-top:16px}
+  </style></head><body>
   <h1>Trading <span>Journal</span></h1>
   <div class="sub">Personal Trading Tracker · Report generated ${today}</div>
-  <div class="g4">
+
+  <div class="section-title">Account Summary</div>
+  <div class="g4" style="margin-bottom:28px">
     <div class="card"><div class="cl">Balance</div><div class="cv ${bal>=0?'pos':'neg'}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}</div></div>
     <div class="card"><div class="cl">Realized P&L</div><div class="cv ${pnl>=0?'pos':'neg'}">${pnl>=0?'+':'-'}$${Math.abs(pnl).toFixed(2)}</div></div>
     <div class="card"><div class="cl">Win Rate</div><div class="cv ${parseFloat(wr)>=50?'pos':'neg'}">${wr}%</div></div>
@@ -672,14 +713,12 @@ function downloadPDF() {
     <div class="card"><div class="cl">Total Withdrawn</div><div class="cv">$${Math.abs(wit).toFixed(2)}</div></div>
     <div class="card"><div class="cl">Net Result</div><div class="cv ${bal>=0?'pos':'neg'}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}</div></div>
   </div>
-  <div class="g3" style="margin-bottom:28px">
-    <div class="card"><div class="cl">Daily Change</div><div class="cv ${parseFloat(eqD)>=0?'pos':'neg'}">${parseFloat(eqD)>=0?'+':'-'}$${Math.abs(parseFloat(eqD)).toFixed(2)}</div></div>
-    <div class="card"><div class="cl">Monthly Change</div><div class="cv ${parseFloat(eqM)>=0?'pos':'neg'}">${parseFloat(eqM)>=0?'+':'-'}$${Math.abs(parseFloat(eqM)).toFixed(2)}</div></div>
-    <div class="card"><div class="cl">YTD Change</div><div class="cv ${parseFloat(eqY)>=0?'pos':'neg'}">${parseFloat(eqY)>=0?'+':'-'}$${Math.abs(parseFloat(eqY)).toFixed(2)}</div></div>
-  </div>
-  <div class="st">Recent Trades (Last 20)</div>
-  <table><thead><tr><th>Date</th><th>Symbol</th><th>Dir</th><th>Entry</th><th>Exit</th><th>Lots</th><th>P&L</th></tr></thead>
-  <tbody>${tr.slice(-20).reverse().map(t=>{const p=parseFloat(t.pnl)||0;return`<tr><td>${(t.open_time||'').slice(0,10)}</td><td><b>${t.symbol}</b></td><td>${(t.direction||'').toUpperCase()}</td><td>${t.entry}</td><td>${t.exit}</td><td>${t.lots}</td><td style="font-weight:600;color:${p>=0?'#1D9E75':'#ef4444'}">${p>=0?'+':'-'}$${Math.abs(p).toFixed(2)}</td></tr>`;}).join('')}</tbody></table>
+
+  <div class="section-title">Equity Growth</div>
+  ${chartSection('Daily (Last 7 Days)', eqD, imgDaily)}
+  ${chartSection('Monthly (Last 30 Days)', eqM, imgMonthly)}
+  ${chartSection('Year to Date (YTD)', eqY, imgYTD)}
+
   <div class="ft">Trading Journal · Personal Trading Tracker · ${today}</div>
   </body></html>`;
 
