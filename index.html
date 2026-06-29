@@ -629,24 +629,6 @@ function showPage(id, el) {
 }
 
 // ── PDF ───────────────────────────────────────────────────────
-function makeChartImage(pts, label, color) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 800; canvas.height = 220;
-  const ctx = canvas.getContext('2d');
-  const c = new Chart(ctx, {
-    type:'line',
-    data:{labels:pts.map(x=>{const d=new Date(x.d);return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}),
-      datasets:[{label,data:pts.map(x=>x.bal),borderColor:color,borderWidth:2,
-        pointRadius:pts.length>30?0:3,fill:true,
-        backgroundColor:color==='#1D9E75'?'rgba(29,158,117,.1)':'rgba(239,68,68,.1)',tension:.3}]},
-    options:{responsive:false,animation:false,plugins:{legend:{display:false}},
-      scales:{x:{ticks:{font:{size:9}},grid:{color:'#eee'}},y:{ticks:{font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:'#eee'}}}}
-  });
-  const img = canvas.toDataURL('image/png');
-  c.destroy();
-  return img;
-}
-
 function downloadPDF() {
   const btn = document.getElementById('pdfBtn');
   btn.textContent = 'Generating...'; btn.disabled = true;
@@ -659,68 +641,107 @@ function downloadPDF() {
   const pts = getEquityPoints();
   const now = new Date();
 
-  // Daily: last 7 points
-  const dailyPts = pts.slice(-7);
-  // Monthly: last 30 days
   const monCut = new Date(now); monCut.setMonth(now.getMonth()-1);
+  const dailyPts   = pts.slice(-7);
   const monthlyPts = pts.filter(p=>new Date(p.d)>=monCut);
-  // YTD
-  const ytdPts = pts.filter(p=>p.d.startsWith(now.getFullYear()+''));
+  const ytdPts     = pts.filter(p=>p.d.startsWith(now.getFullYear()+''));
 
   const eqD = dailyPts.length>=2?(dailyPts[dailyPts.length-1].bal-dailyPts[0].bal).toFixed(2):'0.00';
   const eqM = monthlyPts.length>=2?(monthlyPts[monthlyPts.length-1].bal-monthlyPts[0].bal).toFixed(2):'0.00';
   const eqY = ytdPts.length>=2?(ytdPts[ytdPts.length-1].bal-ytdPts[0].bal).toFixed(2):pnl.toFixed(2);
   const today = now.toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  const gc = v => parseFloat(v)>=0?'#1D9E75':'#ef4444';
 
-  const getColor = v => parseFloat(v)>=0?'#1D9E75':'#ef4444';
+  const mkDataset = (pts, color) => JSON.stringify({
+    labels: pts.map(x=>{const d=new Date(x.d);return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}),
+    data: pts.map(x=>x.bal),
+    color
+  });
 
-  const imgDaily    = dailyPts.length>1   ? makeChartImage(dailyPts,   'Daily',   getColor(eqD)) : '';
-  const imgMonthly  = monthlyPts.length>1 ? makeChartImage(monthlyPts, 'Monthly', getColor(eqM)) : '';
-  const imgYTD      = ytdPts.length>1     ? makeChartImage(ytdPts,     'YTD',     getColor(eqY)) : '';
-
-  const chartSection = (title, change, img) => img ? `
-    <div style="margin-bottom:28px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div style="font-size:11px;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.06em">${title}</div>
-        <div style="font-size:18px;font-weight:700;color:${getColor(change)}">${parseFloat(change)>=0?'+':'-'}$${Math.abs(parseFloat(change)).toFixed(2)}</div>
-      </div>
-      <img src="${img}" style="width:100%;border:1px solid #eee;border-radius:8px"/>
-    </div>` : '';
+  const dD = mkDataset(dailyPts, gc(eqD));
+  const dM = mkDataset(monthlyPts, gc(eqM));
+  const dY = mkDataset(ytdPts, gc(eqY));
 
   const html = `<!DOCTYPE html><html><head><title>Trading Journal Report</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"><\/script>
   <style>*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,sans-serif}
-  body{padding:40px;color:#111;max-width:860px;margin:0 auto}
+  body{padding:36px;color:#111;max-width:860px;margin:0 auto}
   h1{font-size:22px;font-weight:700}h1 span{color:#1D9E75}
-  .sub{color:#999;font-size:12px;margin-top:4px;margin-bottom:28px}
+  .sub{color:#999;font-size:12px;margin-top:4px;margin-bottom:24px}
   .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
   .card{border:1px solid #eee;border-radius:10px;padding:14px}
   .cl{font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
   .cv{font-size:18px;font-weight:700}.pos{color:#1D9E75}.neg{color:#ef4444}
-  .section-title{font-size:13px;font-weight:600;color:#111;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #f0f0f0}
-  .ft{margin-top:32px;text-align:center;font-size:11px;color:#ccc;border-top:1px solid #eee;padding-top:16px}
+  .stitle{font-size:13px;font-weight:600;color:#111;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #f0f0f0}
+  .chart-block{margin-bottom:28px}
+  .chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .chart-label{font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em}
+  .chart-change{font-size:17px;font-weight:700}
+  .chart-wrap{height:180px;position:relative;border:1px solid #f0f0f0;border-radius:8px;padding:8px}
+  .ft{margin-top:28px;text-align:center;font-size:11px;color:#ccc;border-top:1px solid #eee;padding-top:14px}
   </style></head><body>
-  <h1>Trading <span>Journal</span></h1>
-  <div class="sub">Personal Trading Tracker · Report generated ${today}</div>
+  <h1>Trading <span>Journal<\/span><\/h1>
+  <div class="sub">Personal Trading Tracker &middot; Report generated ${today}<\/div>
 
-  <div class="section-title">Account Summary</div>
+  <div class="stitle">Account Summary<\/div>
   <div class="g4" style="margin-bottom:28px">
-    <div class="card"><div class="cl">Balance</div><div class="cv ${bal>=0?'pos':'neg'}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}</div></div>
-    <div class="card"><div class="cl">Realized P&L</div><div class="cv ${pnl>=0?'pos':'neg'}">${pnl>=0?'+':'-'}$${Math.abs(pnl).toFixed(2)}</div></div>
-    <div class="card"><div class="cl">Win Rate</div><div class="cv ${parseFloat(wr)>=50?'pos':'neg'}">${wr}%</div></div>
-    <div class="card"><div class="cl">Total Trades</div><div class="cv">${tr.length}</div></div>
-    <div class="card"><div class="cl">Trading Days</div><div class="cv">${Object.keys(dayMap).length}</div></div>
-    <div class="card"><div class="cl">Total Deposited</div><div class="cv pos">$${dep.toFixed(2)}</div></div>
-    <div class="card"><div class="cl">Total Withdrawn</div><div class="cv">$${Math.abs(wit).toFixed(2)}</div></div>
-    <div class="card"><div class="cl">Net Result</div><div class="cv ${bal>=0?'pos':'neg'}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}</div></div>
-  </div>
+    <div class="card"><div class="cl">Balance<\/div><div class="cv ${bal>=0?'pos':'neg'}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}<\/div><\/div>
+    <div class="card"><div class="cl">Realized P&amp;L<\/div><div class="cv ${pnl>=0?'pos':'neg'}">${pnl>=0?'+':'-'}$${Math.abs(pnl).toFixed(2)}<\/div><\/div>
+    <div class="card"><div class="cl">Win Rate<\/div><div class="cv ${parseFloat(wr)>=50?'pos':'neg'}">${wr}%<\/div><\/div>
+    <div class="card"><div class="cl">Total Trades<\/div><div class="cv">${tr.length}<\/div><\/div>
+    <div class="card"><div class="cl">Trading Days<\/div><div class="cv">${Object.keys(dayMap).length}<\/div><\/div>
+    <div class="card"><div class="cl">Total Deposited<\/div><div class="cv pos">$${dep.toFixed(2)}<\/div><\/div>
+    <div class="card"><div class="cl">Total Withdrawn<\/div><div class="cv">$${Math.abs(wit).toFixed(2)}<\/div><\/div>
+    <div class="card"><div class="cl">Net Result<\/div><div class="cv ${bal>=0?'pos':'neg'}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}<\/div><\/div>
+  <\/div>
 
-  <div class="section-title">Equity Growth</div>
-  ${chartSection('Daily (Last 7 Days)', eqD, imgDaily)}
-  ${chartSection('Monthly (Last 30 Days)', eqM, imgMonthly)}
-  ${chartSection('Year to Date (YTD)', eqY, imgYTD)}
+  <div class="stitle">Equity Growth<\/div>
 
-  <div class="ft">Trading Journal · Personal Trading Tracker · ${today}</div>
-  </body></html>`;
+  <div class="chart-block">
+    <div class="chart-header">
+      <div class="chart-label">Daily (Last 7 Days)<\/div>
+      <div class="chart-change" style="color:${gc(eqD)}">${parseFloat(eqD)>=0?'+':'-'}$${Math.abs(parseFloat(eqD)).toFixed(2)}<\/div>
+    <\/div>
+    <div class="chart-wrap"><canvas id="cD"><\/canvas><\/div>
+  <\/div>
+
+  <div class="chart-block">
+    <div class="chart-header">
+      <div class="chart-label">Monthly (Last 30 Days)<\/div>
+      <div class="chart-change" style="color:${gc(eqM)}">${parseFloat(eqM)>=0?'+':'-'}$${Math.abs(parseFloat(eqM)).toFixed(2)}<\/div>
+    <\/div>
+    <div class="chart-wrap"><canvas id="cM"><\/canvas><\/div>
+  <\/div>
+
+  <div class="chart-block">
+    <div class="chart-header">
+      <div class="chart-label">Year to Date (YTD)<\/div>
+      <div class="chart-change" style="color:${gc(eqY)}">${parseFloat(eqY)>=0?'+':'-'}$${Math.abs(parseFloat(eqY)).toFixed(2)}<\/div>
+    <\/div>
+    <div class="chart-wrap"><canvas id="cY"><\/canvas><\/div>
+  <\/div>
+
+  <div class="ft">Trading Journal &middot; Personal Trading Tracker &middot; ${today}<\/div>
+
+  <script>
+  function mkChart(id, dataset) {
+    const d = JSON.parse(dataset);
+    new Chart(document.getElementById(id).getContext('2d'), {
+      type:'line',
+      data:{labels:d.labels,datasets:[{data:d.data,borderColor:d.color,borderWidth:2,
+        pointRadius:d.data.length>20?0:3,fill:true,
+        backgroundColor:d.color==='#1D9E75'?'rgba(29,158,117,.08)':'rgba(239,68,68,.08)',tension:.3}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:c=>'$'+c.parsed.y.toLocaleString('en-US',{minimumFractionDigits:2})}}},
+        scales:{x:{ticks:{font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{color:'#f5f5f5'}},
+          y:{ticks:{font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:'#f5f5f5'}}}}
+    });
+  }
+  mkChart('cD', '${dD.replace(/'/g,"\\'")}');
+  mkChart('cM', '${dM.replace(/'/g,"\\'")}');
+  mkChart('cY', '${dY.replace(/'/g,"\\'")}');
+  <\/script>
+  <\/body><\/html>`;
 
   const blob = new Blob([html], {type:'text/html'});
   const url = URL.createObjectURL(blob);
